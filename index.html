@@ -1,0 +1,469 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#101411">
+<title>ACOUSTIC MIC</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#101411;color:#e9eee9;
+ font-family:Arial,sans-serif;padding:18px;
+}
+.app{max-width:480px;margin:auto}
+.header{text-align:center;padding:20px 0}
+.header h1{font-size:27px;letter-spacing:4px;margin:0;color:#8df5a1}
+.header p{font-size:11px;color:#829187;letter-spacing:2px}
+.panel{
+ background:#1a211d;border:1px solid #303d34;
+ border-radius:14px;padding:17px;margin-bottom:14px;
+}
+.status{display:flex;align-items:center;gap:9px}
+.dot{width:10px;height:10px;border-radius:50%;background:#777}
+.dot.on{background:#52ed83;box-shadow:0 0 12px #52ed83}
+.status small{color:#9ba99e}
+.meter{
+ height:12px;background:#303b32;border-radius:20px;
+ overflow:hidden;margin-top:15px
+}
+.meter div{
+ height:100%;width:0%;
+ background:linear-gradient(90deg,#4edb83,#c5e95a);
+ transition:width .08s
+}
+#visual{
+ width:100%;height:105px;background:#101712;
+ border-radius:9px;margin-top:13px
+}
+button{
+ border:0;border-radius:10px;padding:15px;
+ font-weight:bold;font-size:14px;cursor:pointer
+}
+.start{background:#75e991;color:#102116;width:100%}
+.stop{background:#3a4540;color:white;width:100%;margin-top:9px}
+.row{display:flex;justify-content:space-between;align-items:center}
+.row label{font-size:13px}
+.row output{color:#8df5a1;font-size:13px}
+.control{margin:20px 0}
+input[type=range]{width:100%;accent-color:#79e997;margin-top:12px}
+select{
+ background:#101712;color:white;padding:10px;
+ border:1px solid #39483d;border-radius:8px;width:100%
+}
+.note{font-size:11px;color:#91a096;line-height:1.6}
+.footer{text-align:center;font-size:10px;color:#66766b;padding:15px}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+<div class="header">
+<h1>ACOUSTIC MIC</h1>
+<p>LIVE GUITAR AUDIO PROCESSOR</p>
+</div>
+
+<div class="panel">
+<div class="status">
+<div class="dot" id="dot"></div>
+<div>
+<strong id="status">MICROPHONE OFF</strong><br>
+<small id="detail">Tekan START untuk memulai</small>
+</div>
+</div>
+
+<canvas id="visual"></canvas>
+
+<div class="row" style="margin-top:15px">
+<label>INPUT LEVEL</label>
+<output id="level">0%</output>
+</div>
+<div class="meter"><div id="meter"></div></div>
+</div>
+
+<div class="panel">
+<button class="start" id="start">▶ START MICROPHONE</button>
+<button class="stop" id="stop">■ STOP</button>
+</div>
+
+<div class="panel">
+<strong>GUITAR EQUALIZER</strong>
+
+<div class="control">
+<div class="row"><label>BASS</label><output id="bassVal">0 dB</output></div>
+<input id="bass" type="range" min="-12" max="12" value="2">
+</div>
+
+<div class="control">
+<div class="row"><label>MID</label><output id="midVal">0 dB</output></div>
+<input id="mid" type="range" min="-12" max="12" value="0">
+</div>
+
+<div class="control">
+<div class="row"><label>TREBLE</label><output id="trebleVal">0 dB</output></div>
+<input id="treble" type="range" min="-12" max="12" value="2">
+</div>
+</div>
+
+<div class="panel">
+<strong>VOCAL & NOISE FILTER</strong>
+
+<div class="control">
+<div class="row">
+<label>VOCAL REDUCTION</label>
+<output id="vocalVal">30%</output>
+</div>
+<input id="vocal" type="range" min="0" max="100" value="30">
+</div>
+
+<div class="control">
+<div class="row">
+<label>NOISE GATE</label>
+<output id="gateVal">-48 dB</output>
+</div>
+<input id="gate" type="range" min="-60" max="-20" value="-48">
+</div>
+
+<div class="control">
+<div class="row">
+<label>MIC GAIN</label>
+<output id="gainVal">100%</output>
+</div>
+<input id="gain" type="range" min="0" max="200" value="100">
+</div>
+
+<div class="control">
+<div class="row">
+<label>OUTPUT VOLUME</label>
+<output id="volumeVal">80%</output>
+</div>
+<input id="volume" type="range" min="0" max="100" value="80">
+</div>
+</div>
+
+<div class="panel">
+<strong>GUITAR PRESET</strong>
+<div style="margin-top:15px">
+<select id="preset">
+<option value="natural">Natural Acoustic</option>
+<option value="bright">Bright Acoustic</option>
+<option value="warm">Warm Acoustic</option>
+<option value="finger">Fingerstyle</option>
+<option value="custom">Custom</option>
+</select>
+</div>
+</div>
+
+<div class="panel">
+<strong>INFORMASI</strong>
+<p class="note">
+• Letakkan HP dekat lubang suara gitar.<br>
+• Sambungkan output HP ke salon menggunakan kabel jack.<br>
+• Gunakan volume salon rendah terlebih dahulu.<br>
+• Hindari mengarahkan salon ke mikrofon HP untuk mencegah feedback.<br>
+• Filter vokal hanya mengurangi sebagian frekuensi suara manusia.
+</p>
+</div>
+
+<div class="footer">ACOUSTIC MIC • VERSION 1.0</div>
+</div>
+
+<script>
+let audioContext;
+let stream;
+let source;
+let analyser;
+let filters = {};
+let micGain;
+let masterGain;
+let compressor;
+let gateGain;
+let running = false;
+let animation;
+let gateValue = -48;
+
+const $ = id => document.getElementById(id);
+
+const canvas = $("visual");
+const ctx = canvas.getContext("2d");
+
+function updateCanvas(){
+ const rect = canvas.getBoundingClientRect();
+ const dpr = window.devicePixelRatio || 1;
+ canvas.width = rect.width*dpr;
+ canvas.height = rect.height*dpr;
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+updateCanvas();
+window.addEventListener("resize",updateCanvas);
+
+function setStatus(on,text,detail){
+ $("dot").classList.toggle("on",on);
+ $("status").textContent=text;
+ $("detail").textContent=detail;
+}
+
+function dbToLinear(db){
+ return Math.pow(10,db/20);
+}
+
+async function startMic(){
+ if(running)return;
+
+ try{
+  if(!navigator.mediaDevices?.getUserMedia){
+   throw new Error("Browser tidak mendukung akses mikrofon atau membutuhkan HTTPS.");
+  }
+
+  stream=await navigator.mediaDevices.getUserMedia({
+   audio:{
+    echoCancellation:false,
+    noiseSuppression:false,
+    autoGainControl:false
+   }
+  });
+
+  audioContext=new (window.AudioContext || window.webkitAudioContext)({
+   latencyHint:"interactive"
+  });
+
+  await audioContext.resume();
+
+  source=audioContext.createMediaStreamSource(stream);
+
+  // High pass
+  filters.high=audioContext.createBiquadFilter();
+  filters.high.type="highpass";
+  filters.high.frequency.value=75;
+
+  // Bass
+  filters.bass=audioContext.createBiquadFilter();
+  filters.bass.type="lowshelf";
+  filters.bass.frequency.value=180;
+
+  // Mid
+  filters.mid=audioContext.createBiquadFilter();
+  filters.mid.type="peaking";
+  filters.mid.frequency.value=900;
+  filters.mid.Q.value=0.8;
+
+  // Vocal reduction area
+  filters.vocal=audioContext.createBiquadFilter();
+  filters.vocal.type="peaking";
+  filters.vocal.frequency.value=2200;
+  filters.vocal.Q.value=1.1;
+
+  // Treble
+  filters.treble=audioContext.createBiquadFilter();
+  filters.treble.type="highshelf";
+  filters.treble.frequency.value=4500;
+
+  filters.low=audioContext.createBiquadFilter();
+  filters.low.type="lowpass";
+  filters.low.frequency.value=10000;
+
+  compressor=audioContext.createDynamicsCompressor();
+  compressor.threshold.value=-18;
+  compressor.knee.value=15;
+  compressor.ratio.value=3;
+  compressor.attack.value=0.01;
+  compressor.release.value=0.15;
+
+  micGain=audioContext.createGain();
+  gateGain=audioContext.createGain();
+  masterGain=audioContext.createGain();
+
+  analyser=audioContext.createAnalyser();
+  analyser.fftSize=2048;
+
+  // Audio connection
+  source.connect(filters.high);
+  filters.high.connect(filters.bass);
+  filters.bass.connect(filters.mid);
+  filters.mid.connect(filters.vocal);
+  filters.vocal.connect(filters.treble);
+  filters.treble.connect(filters.low);
+  filters.low.connect(compressor);
+  compressor.connect(micGain);
+  micGain.connect(gateGain);
+  gateGain.connect(analyser);
+  analyser.connect(masterGain);
+  masterGain.connect(audioContext.destination);
+
+  running=true;
+
+  updateEQ();
+  updateGain();
+  updateVolume();
+
+  setStatus(true,"MICROPHONE ACTIVE","Gitar siap dimainkan");
+  $("start").textContent="● MICROPHONE ACTIVE";
+
+  drawVisual();
+  gateLoop();
+
+ }catch(error){
+  setStatus(false,"ERROR",error.message);
+  console.error(error);
+ }
+}
+
+function stopMic(){
+ if(!running)return;
+
+ cancelAnimationFrame(animation);
+
+ if(stream){
+  stream.getTracks().forEach(track=>track.stop());
+ }
+
+ if(audioContext){
+  audioContext.close();
+ }
+
+ running=false;
+ $("meter").style.width="0%";
+ $("level").textContent="0%";
+ $("start").textContent="▶ START MICROPHONE";
+
+ setStatus(false,"MICROPHONE OFF","Tekan START untuk memulai");
+}
+
+function updateEQ(){
+ if(!filters.bass)return;
+
+ filters.bass.gain.value=Number($("bass").value);
+ filters.mid.gain.value=Number($("mid").value);
+ filters.treble.gain.value=Number($("treble").value);
+
+ let vocal=Number($("vocal").value);
+ filters.vocal.gain.value=-(vocal*0.12);
+
+ $("bassVal").textContent=$("bass").value+" dB";
+ $("midVal").textContent=$("mid").value+" dB";
+ $("trebleVal").textContent=$("treble").value+" dB";
+ $("vocalVal").textContent=vocal+"%";
+}
+
+function updateGain(){
+ if(!micGain)return;
+ micGain.gain.value=Number($("gain").value)/100;
+ $("gainVal").textContent=$("gain").value+"%";
+}
+
+function updateVolume(){
+ if(!masterGain)return;
+ masterGain.gain.value=Number($("volume").value)/100;
+ $("volumeVal").textContent=$("volume").value+"%";
+}
+
+function gateLoop(){
+ if(!running)return;
+
+ const data=new Uint8Array(analyser.fftSize);
+ analyser.getByteTimeDomainData(data);
+
+ let sum=0;
+ for(let i=0;i<data.length;i++){
+  let v=(data[i]-128)/128;
+  sum+=v*v;
+ }
+
+ let rms=Math.sqrt(sum/data.length);
+ let db=20*Math.log10(Math.max(rms,0.00001));
+
+ let threshold=Number($("gate").value);
+ let target=db>threshold ? 1 : 0.015;
+
+ let current=gateGain.gain.value;
+ gateGain.gain.setTargetAtTime(
+  target,audioContext.currentTime,0.025
+ );
+
+ $("gateVal").textContent=threshold+" dB";
+
+ let percent=Math.min(100,Math.round(rms*300));
+ $("meter").style.width=percent+"%";
+ $("level").textContent=percent+"%";
+
+ animation=requestAnimationFrame(gateLoop);
+}
+
+function drawVisual(){
+ if(!running)return;
+
+ const w=canvas.clientWidth;
+ const h=canvas.clientHeight;
+ const data=new Uint8Array(analyser.frequencyBinCount);
+
+ analyser.getByteFrequencyData(data);
+
+ ctx.clearRect(0,0,w,h);
+ ctx.fillStyle="#101712";
+ ctx.fillRect(0,0,w,h);
+
+ const bars=48;
+ const step=Math.floor(data.length/bars);
+ const gap=3;
+ const barWidth=(w/bars)-gap;
+
+ for(let i=0;i<bars;i++){
+  let value=data[i*step]/255;
+  let barHeight=value*(h-12);
+
+  ctx.fillStyle="#70e993";
+  ctx.fillRect(
+   i*(barWidth+gap),
+   h-barHeight,
+   barWidth,
+   barHeight
+  );
+ }
+
+ animation=requestAnimationFrame(drawVisual);
+}
+
+["bass","mid","treble","vocal"].forEach(id=>{
+ $(id).addEventListener("input",()=>{
+  updateEQ();
+  $("preset").value="custom";
+ });
+});
+
+$("gain").addEventListener("input",updateGain);
+$("volume").addEventListener("input",updateVolume);
+
+$("gate").addEventListener("input",()=>{
+ gateValue=Number($("gate").value);
+ $("gateVal").textContent=gateValue+" dB";
+});
+
+$("preset").addEventListener("change",()=>{
+ const presets={
+  natural:[2,0,2,20],
+  bright:[1,2,5,35],
+  warm:[4,1,-2,20],
+  finger:[1,4,3,15]
+ };
+
+ const p=presets[$("preset").value];
+ if(!p)return;
+
+ ["bass","mid","treble","vocal"].forEach((id,i)=>{
+  $(id).value=p[i];
+ });
+
+ updateEQ();
+});
+
+$("start").addEventListener("click",startMic);
+$("stop").addEventListener("click",stopMic);
+
+setStatus(false,"MICROPHONE OFF","Tekan START untuk memulai");
+</script>
+</body>
+</html>
